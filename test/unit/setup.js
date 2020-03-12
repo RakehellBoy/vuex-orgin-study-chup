@@ -1,3 +1,5 @@
-import Vue from 'vue'
+import 'babel-polyfill'
+import Vue from 'vue/dist/vue.common.js'
+import Vuex from '../../dist/vuex.common.js'
 
-Vue.config.productionTip = false
+Vue.use(Vuex)

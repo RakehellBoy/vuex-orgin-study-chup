@@ -1,30 +1,29 @@
-# my-vue
+# Vuex [![Build Status](https://circleci.com/gh/vuejs/vuex/tree/dev.png?style=shield)](https://circleci.com/gh/vuejs/vuex)
 
-> A Vue.js project
+> Centralized State Management for Vue.js.
 
-## Build Setup
+<p align="center">
+  <img width="700px" src="https://raw.githubusercontent.com/vuejs/vuex/dev/docs/.vuepress/public/vuex.png">
+</p>
+
+- [What is Vuex?](https://vuex.vuejs.org/)
+- [Full Documentation](http://vuex.vuejs.org/)
+
+## Examples
+
+- [Counter](https://github.com/vuejs/vuex/tree/dev/examples/counter)
+- [Counter with Hot Reload](https://github.com/vuejs/vuex/tree/dev/examples/counter-hot)
+- [TodoMVC](https://github.com/vuejs/vuex/tree/dev/examples/todomvc)
+- [Flux Chat](https://github.com/vuejs/vuex/tree/dev/examples/chat)
+- [Shopping Cart](https://github.com/vuejs/vuex/tree/dev/examples/shopping-cart)
+
+Running the examples:
 
 ``` bash
-# install dependencies
-npm install
-
-# serve with hot reload at localhost:8080
-npm run dev
-
-# build for production with minification
-npm run build
-
-# build for production and view the bundle analyzer report
-npm run build --report
-
-# run unit tests
-npm run unit
-
-# run e2e tests
-npm run e2e
-
-# run all tests
-npm test
+$ npm install
+$ npm run dev # serve examples at localhost:8080
 ```
 
-For a detailed explanation on how things work, check out the [guide](http://vuejs-templates.github.io/webpack/) and [docs for vue-loader](http://vuejs.github.io/vue-loader).
+## License
+
+[MIT](http://opensource.org/licenses/MIT)
