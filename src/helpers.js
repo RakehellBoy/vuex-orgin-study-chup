@@ -136,14 +136,13 @@ export const createNamespacedHelpers = (namespace) => ({
 })
 
 /**
- * Normalize the map
  * normalizeMap([1, 2, 3]) => [ { key: 1, val: 1 }, { key: 2, val: 2 }, { key: 3, val: 3 } ]
  * normalizeMap({a: 1, b: 2, c: 3}) => [ { key: 'a', val: 1 }, { key: 'b', val: 2 }, { key: 'c', val: 3 } ]
  * @param {Array|Object} map
  * @return {Object}
  */
 function normalizeMap (map) {
-  if (!isValidMap(map)) {
+  if (!isValidMap(map)) { // map参数 不是数组或对象直接返回空数组[]
     return []
   }
   return Array.isArray(map)

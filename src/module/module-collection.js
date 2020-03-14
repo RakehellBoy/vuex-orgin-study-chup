@@ -65,13 +65,13 @@ function update (path, targetModule, newModule) {
     assertRawModule(path, newModule)
   }
 
-  // update target module
+  // 更新目标对象的原生(rawModule)的 namespaced getters mutations actions 仅且只更新这四个
   targetModule.update(newModule)
 
-  // update nested modules
+  // 递归循环更新 子modules
   if (newModule.modules) {
     for (const key in newModule.modules) {
-      if (!targetModule.getChild(key)) {
+      if (!targetModule.getChild(key)) { //原module不含改属性(即newModule有原module没有的属性， newModule可以少属性，但最好不要多出属性)
         if (process.env.NODE_ENV !== 'production') {
           console.warn(
             `[vuex] trying to add a new module '${key}' on hot reloading, ` +
@@ -80,15 +80,15 @@ function update (path, targetModule, newModule) {
         }
         return
       }
-      update(
-        path.concat(key),
-        targetModule.getChild(key),
-        newModule.modules[key]
-      )
+      update(path.concat(key), targetModule.getChild(key), newModule.modules[key])
     }
   }
 }
 
+
+
+
+// 以下都是在做 getters mutations actions 传入错误值后给予错误提示
 const functionAssert = {
   assert: value => typeof value === 'function',
   expected: 'function'

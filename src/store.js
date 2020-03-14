@@ -7,9 +7,6 @@ let Vue // bind on install
 
 export class Store {
   constructor (options = {}) {
-    // Auto install if it is not done yet and `window` has `Vue`.
-    // To allow users to avoid auto-installation in some cases,
-    // this code should be placed here. See #731
     // 不通过npm安装vue 通过cdn链接形式
     if (!Vue && typeof window !== 'undefined' && window.Vue) {
       install(window.Vue)
@@ -23,27 +20,26 @@ export class Store {
     }
 
     // ES6的写法，定义变量从options中拿值(解构赋值)， options中解构赋值失败添加默认值
-    const {
-      plugins = [],
-      strict = false
-    } = options
+    const { plugins = [], strict = false } = options
 
     // store internal state
-    this._committing = false
-    this._actions = Object.create(null)
-    this._actionSubscribers = [] //订阅actions变换
-    this._mutations = Object.create(null)
-    this._wrappedGetters = Object.create(null)
-    this._modules = new ModuleCollection(options)
-    this._modulesNamespaceMap = Object.create(null)
-    this._subscribers = [] //订阅mutations变换
-    this._watcherVM = new Vue()
+    this._committing = false // 提交状态标识，在严格模式时，防止非commit操作下，state被修改
+    this._actions = Object.create(null) // action 函数的数组的对象，保存所有action回调函数，
+    this._actionSubscribers = [] // 订阅 action 操作的函数数组。里面的每个函数，将在 action函数被调用前被调用，该功能常用于插件，与主功能无关
+    this._mutations = Object.create(null) // 解析并生成模块树，通过树结构，保存配置文件内容
+    this._wrappedGetters = Object.create(null) // 保存 getter 函数的函数数组对象容器。
+    this._modules = new ModuleCollection(options) // 通过_children生成子父级module树
+    this._modulesNamespaceMap = Object.create(null) // 保存命名空间的模块对象，以便在辅助函数createNamespacedHelpers中快速定位到带命名空间的模块
+    this._subscribers = [] // 订阅 mutation 操作的函数数组。里面的每个函数，将在 commit 执行完成后被调用，该功能常用于插件，与主功能无关
+    this._watcherVM = new Vue() // 定义一个Vue对象，Vue类在调用Vuex安装函数，install时，被传递进来
     this._makeLocalGettersCache = Object.create(null)
 
     // bind commit and dispatch to self
     const store = this
     const { dispatch, commit } = this
-    // 固定dispatch commit this始终指向stroe实例(外围无法使用call apply bind修改this指向)
+    /* 复写的作用，是将两个函数的 this 绑定到 Vuex 实例本身。防止 this 的指向被修改。(外围无法使用call apply bind修改this指向)
+       因为这两个函数，可以通过 mapMutations 和 mapActions 辅助函数转化为 Vue 中的普通函数，这时 this 将指向 Vue 组件，而不是 Vuex 实例。所以在这里先将this锁定好
+    */
     this.dispatch = function boundDispatch (type, payload) {
       return dispatch.call(store, type, payload)
     }
@@ -51,15 +47,10 @@ export class Store {
       return commit.call(store, type, payload, options)
     }
 
-    // strict mode
-    this.strict = strict
-
-    // 最外围 根 state
-    const state = this._modules.root.state
+    this.strict = strict //配置严谨模式参数
+    const state = this._modules.root.state // 最外围 根 state
 
     // init root module.
-    // this also recursively registers all sub-modules
-    // and collects all module getters inside this._wrappedGetters
     // 初始化 actions/mutations/getters等  比较重要
     installModule(this, state, [], this._modules.root)
 
@@ -88,16 +79,10 @@ export class Store {
   }
 
   commit (_type, _payload, _options) {
-    // check object-style commit
-    const {
-      type,
-      payload,
-      options
-    } = unifyObjectStyle(_type, _payload, _options)
-
+    const { type, payload, options } = unifyObjectStyle(_type, _payload, _options)  //unifyObjectStyle格式规范化，规范化如果type非字符串 直接报错停止执行
     const mutation = { type, payload }
     const entry = this._mutations[type]
-    if (!entry) {
+    if (!entry) { // 没有找到对应的mutation
       if (process.env.NODE_ENV !== 'production') {
         console.error(`[vuex] unknown mutation type: ${type}`)
       }
@@ -125,12 +110,8 @@ export class Store {
   }
 
   dispatch (_type, _payload) {
-    // check object-style dispatch
-    const {
-      type,
-      payload
-    } = unifyObjectStyle(_type, _payload)
 
+    const { type, payload } = unifyObjectStyle(_type, _payload)
     const action = { type, payload }
     const entry = this._actions[type]
     if (!entry) {
@@ -140,9 +121,14 @@ export class Store {
       return
     }
 
+    /** 先把_actionSubscribers数组中的before的函数都执行完之后，在分发action对应的类型。
+     * 执行完毕之后在执行_actionSubscribers数组after配置的方法。
+     * 值得注意的是，分发action的时候采用了Promise。所以比较适合在action里面执行异步函数。
+     * */
+
     try {
       this._actionSubscribers
-        .slice() // shallow copy to prevent iterator invalidation if subscriber synchronously calls unsubscribe
+        .slice() //slice() 对数组浅复制, 以防止订阅服务器同步调用unsubscribe时 迭代器失效
         .filter(sub => sub.before)
         .forEach(sub => sub.before(action, this.state))
     } catch (e) {
@@ -174,8 +160,9 @@ export class Store {
   subscribe (fn) {
     return genericSubscribe(fn, this._subscribers)
   }
-
-  subscribeAction (fn) {
+  // 订阅 store 的 action。handler 会在每个 action 分发的时候调用并接收 action 描述和当前的 store 的 state 两个参数， 要停止订阅，调用此方法返回的函数即可停止订阅。
+  // 从 3.1.0 起，subscribeAction 也可以指定订阅处理函数的被调用时机应该在一个 action 分发之前还是之后 (默认行为是之前)
+  subscribeAction (fn) { // 该方法就是将我们配置的对象/函数放到_actionSubscribers数组中，并返回一个方法用来去除添加的对象
     const subs = typeof fn === 'function' ? { before: fn } : fn
     return genericSubscribe(subs, this._actionSubscribers)
   }
@@ -222,11 +209,16 @@ export class Store {
     resetStore(this)
   }
 
+   //热更新modules
   hotUpdate (newOptions) {
-    this._modules.update(newOptions)
+    this._modules.update(newOptions) 
     resetStore(this, true)
   }
 
+  /**
+   *  该函数的操作只是将设置_committing标识符为ture，然后执行某函数，函数执行完在将_committing设置为原来的值
+      即允许在函数函数执行期间，修改state的值, 用于在严格模式时，防止非commit方式修改state
+   */
   _withCommit (fn) {
     const committing = this._committing
     this._committing = true
@@ -239,7 +231,7 @@ function genericSubscribe (fn, subs) {
   if (subs.indexOf(fn) < 0) {
     subs.push(fn)
   }
-  return () => {
+  return () => { //返回一个函数 用来取消订阅的
     const i = subs.indexOf(fn)
     if (i > -1) {
       subs.splice(i, 1)
@@ -308,34 +300,34 @@ function resetStoreVM (store, state, hot) {
     Vue.nextTick(() => oldVm.$destroy())
   }
 }
-
+/** stroe: store对象(不变)
+ * rootState: state对象，根据递归初始化传入不一样
+ * path: 当前模块所处层级数组
+ * module: 模块对象
+ * hot: 很少用到*/
 function installModule (store, rootState, path, module, hot) {
-  const isRoot = !path.length
-  // path=['p1', 'p2'] => "p1/p2/"
+  const isRoot = !path.length // 判断当前模块是否根模块
+  // path=['p1', 'p2', 'p3'] => "p1/p3/" (p2模块namespaced : false 或没设置将不添加)
   const namespace = store._modules.getNamespace(path)
 
-  // register in namespace map
-  if (module.namespaced) {
-    // 非根module 且 module namespaced = true
+  if (module.namespaced) { // modules配置 namespaced = true, 如都没有配置stroe._modulesNamespaceMap一直为[]
     if (store._modulesNamespaceMap[namespace] && process.env.NODE_ENV !== 'production') {
       console.error(`[vuex] duplicate namespace ${namespace} for the namespaced module ${path.join('/')}`)
     }
     store._modulesNamespaceMap[namespace] = module
   }
 
-  // 非根module set state
-  if (!isRoot && !hot) {
-    const parentState = getNestedState(rootState, path.slice(0, -1))
+  // 根据modules 生成state形成树状结构
+  if (!isRoot && !hot) { //非根root
+    const parentState = getNestedState(rootState, path.slice(0, -1)) //寻找父级 state对象; path.slice(0, -1)是除去本模块后的模块层级数组
     const moduleName = path[path.length - 1]
-    store._withCommit(() => {
+    store._withCommit(() => { // 区分严格模式时，防止非commit方式修改state
       if (process.env.NODE_ENV !== 'production') {
-        if (moduleName in parentState) {
-          console.warn(
-            `[vuex] state field "${moduleName}" was overridden by a module with the same name at "${path.join('.')}"`
-          )
+        if (moduleName in parentState) { //module中 state中定义的属性名 不可以和modules中的属性名重复(state属性值会被modules覆盖)
+          console.warn(`[vuex] state field "${moduleName}" was overridden by a module with the same name at "${path.join('.')}"`)
         }
       }
-      Vue.set(parentState, moduleName, module.state)
+      Vue.set(parentState, moduleName, module.state) // parentState 无__ob__属性,所以只是简单操作(parentState[moduleName] = module.state)
     })
   }
 
@@ -363,21 +355,25 @@ function installModule (store, rootState, path, module, hot) {
 }
 
 /**
- * make localized dispatch, commit, getters and state
- * if there is no namespace, just use root ones
+ * 
+ * 创建模块内容: make localized dispatch, commit, getters and state
+ * store, store 对象实例
+   namespace, 模块的命名空间前缀，不管本模块是否设置命名空间，父模块设置了，也会有该值
+   path，模块层级关系数组，注意，namespace与path并不一定相同，因为命名层级，只有当模块设置有命名空间(namespaced: true)，才存在对应层级命名
  */
-function makeLocalContext (store, namespace, path) { // namespace 为字符串 'a/b/c/'
-  const noNamespace = namespace === ''
-
+function makeLocalContext (store, namespace, path) {
+  const noNamespace = namespace === '' // 根据namespace（本模块及祖先容器是否是设置过命名空间）进行判断
+  // 有设置命名空间，则往各个函数名中添加命名空间前缀
   const local = {
-    // 非根调用dispatch时 type拼接下 namespace
     dispatch: noNamespace ? store.dispatch : (_type, _payload, _options) => {
       //格式下参数 _type可能为一个对象, 如果_type有type属性，进行重定义 _type=_type.type, _payload=_type, _options=_payload
       const args = unifyObjectStyle(_type, _payload, _options)
       const { payload, options } = args
       let { type } = args
 
-      if (!options || !options.root) { // options不存在 或 options.root不存在
+      // 根据options.root判断是否往全局发送的action函数
+      // 如果不是发送全局的action函数，即只发送本模块内的action函数，这是往调用的的 action函数名中，添加命名空间路径前缀
+      if (!options || !options.root) {
         type = namespace + type
         if (process.env.NODE_ENV !== 'production' && !store._actions[type]) {// store._actions 没有找到 namespace + type的定义
           console.error(`[vuex] unknown local action type: ${args.type}, global type: ${type}`)
@@ -404,11 +400,9 @@ function makeLocalContext (store, namespace, path) { // namespace 为字符串 '
       store.commit(type, payload, options)
     }
   }
-
-  // getters and state object must be gotten lazily
-  // because they will be changed by vm update
+  // 往某对象中添加属性，并设置该数据的访问拦截器，即访问该数据时，将先调用拦截器函数
   Object.defineProperties(local, {
-    getters: {
+    getters: { // state是根据层级关系设置，getters则根据命名空间区分，与层级关系不大
       get: noNamespace? () => store.getters: () => makeLocalGetters(store, namespace)
     },
     state: { 
@@ -419,20 +413,14 @@ function makeLocalContext (store, namespace, path) { // namespace 为字符串 '
   return local
 }
 
-function makeLocalGetters (store, namespace) {
-  if (!store._makeLocalGettersCache[namespace]) { //不存在指定namespace的 getters
+// 作用是将通过模块拿getter时，如何通过store.getters中取。是否应该添加前缀、
+function makeLocalGetters (store, namespace) {   // 例：namespace = 'p1'
+  if (!store._makeLocalGettersCache[namespace]) { //缓存中没有找到，进行处理并缓存； 如找到直接return
     const gettersProxy = {}
-    const splitPos = namespace.length
-    Object.keys(store.getters).forEach(type => {
-      // skip if the target getter is not match this namespace
-      if (type.slice(0, splitPos) !== namespace) return
-
-      // extract local getter type
-      const localType = type.slice(splitPos)
-
-      // Add a port to the getters proxy.
-      // Define as getter property because
-      // we do not want to evaluate the getters in this time.
+    const splitPos = namespace.length // splitPos = 2
+    Object.keys(store.getters).forEach(type => {   // type是store getters全路径 p1/p2/p3
+      if (type.slice(0, splitPos) !== namespace) return  // type.slice(0, slitPos) = p1
+      const localType = type.slice(splitPos)  // localType = p2/p3
       Object.defineProperty(gettersProxy, localType, {
         get: () => store.getters[type],
         enumerable: true
@@ -493,6 +481,7 @@ function registerGetter (store, type, rawGetter, local) {
   }
 }
 
+// 监听树state变化(deep：true 深度递归监听)
 function enableStrictMode (store) {
   store._vm.$watch(function () { return this._data.$$state }, () => {
     if (process.env.NODE_ENV !== 'production') {
@@ -505,7 +494,7 @@ function getNestedState (state, path) {
   return path.reduce((state, key) => state[key], state)
 }
 
-// commit dispatch方法参数 规范化
+// 判断参数是否为对象，是对象则进行解析，并调整参数位置(commit dispatch方法参数 规范化)
 function unifyObjectStyle (type, payload, options) {
   if (isObject(type) && type.type) {
     options = payload
@@ -520,7 +509,7 @@ function unifyObjectStyle (type, payload, options) {
   return { type, payload, options }
 }
 
-// Vue.use调用安装Vuex插件
+// Vue.use调用安装Vuex插件调用
 export function install (_Vue) {
   /*保证反复Vue.use(Vuex)只会调用一次, 
       其实vue.use方法已经做过一次保障了:
@@ -536,6 +525,6 @@ export function install (_Vue) {
     }
     return
   }
-  Vue = _Vue
-  applyMixin(Vue)
+  Vue = _Vue //用本地全局变量保存外部传入的Vue类
+  applyMixin(Vue) // 调用Vue的minix混入方法，将Vuex实例注入； 让Vue各个实例组件共享同一个$store
 }
