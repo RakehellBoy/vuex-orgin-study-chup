@@ -4,7 +4,7 @@ import { forEachValue } from '../util'
 // runtime/ _children/ _rawModule/ state/ namespaced五个属性
 export default class Module {
   constructor (rawModule, runtime) {
-    this.runtime = runtime
+    this.runtime = runtime // 标示是否由 stroe的registerModule方法动态注册的(如是 runtime: true); new Vuex.store(xx)静态注册的为false； 动态注入的可以使用unregisterModule注销； 静态的不行  
     // Store some children item
     this._children = Object.create(null)
     // Store the origin module object which passed by programmer

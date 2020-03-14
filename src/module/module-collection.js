@@ -27,8 +27,8 @@ export default class ModuleCollection {
     update([], this.root, rawRootModule)
   }
 
-  // 自调用注册字module 并挂在到父module._children下
-  register (path, rawModule, runtime = true) {
+  // 自调用注册字odule 并挂在到父module._children下
+  register (path, rawModule, runtime = true) { //new Vuex.stroe(xxx) 该方法静态注入时传入runtime: false; 动态注册不传默认true
     if (process.env.NODE_ENV !== 'production') {
       assertRawModule(path, rawModule)
     }
@@ -50,10 +50,10 @@ export default class ModuleCollection {
     }
   }
 
+  // 用于动态注入的module 可以动态注销
   unregister (path) {
     const parent = this.get(path.slice(0, -1))
     const key = path[path.length - 1]
-    // runtime = false 不注销
     if (!parent.getChild(key).runtime) return
 
     parent.removeChild(key)

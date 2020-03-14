@@ -275,7 +275,7 @@ function resetStoreVM (store, state, hot) {
   // suppress warnings just in case the user has added
   // some funky global mixins
   const silent = Vue.config.silent
-  Vue.config.silent = true
+  Vue.config.silent = true // 取消Vue所有的日志和警告
   store._vm = new Vue({
     data: {
       $$state: state
@@ -286,7 +286,7 @@ function resetStoreVM (store, state, hot) {
 
   // enable strict mode for new vm
   if (store.strict) {
-    enableStrictMode(store)
+    enableStrictMode(store)  // 严格模式 通过vm.$watch监听store.state深层变化，配合store._commiting做提示
   }
 
   if (oldVm) {
